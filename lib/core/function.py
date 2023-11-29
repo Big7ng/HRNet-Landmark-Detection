@@ -17,7 +17,7 @@ import numpy as np
 from .evaluation import decode_preds, compute_nme
 
 logger = logging.getLogger(__name__)
-
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
@@ -59,6 +59,7 @@ def train(config, train_loader, model, critertion, optimizer,
         data_time.update(time.time()-end)
 
         # compute the output
+        inp = inp.to(device)
         output = model(inp)
         target = target.cuda(non_blocking=True)
 
@@ -124,6 +125,8 @@ def validate(config, val_loader, model, criterion, epoch, writer_dict):
     with torch.no_grad():
         for i, (inp, target, meta) in enumerate(val_loader):
             data_time.update(time.time() - end)
+
+            inp = inp.to(device)
             output = model(inp)
             target = target.cuda(non_blocking=True)
 
@@ -189,6 +192,8 @@ def inference(config, data_loader, model):
     with torch.no_grad():
         for i, (inp, target, meta) in enumerate(data_loader):
             data_time.update(time.time() - end)
+
+            inp = inp.to(device)
             output = model(inp)
             score_map = output.data.cpu()
             preds = decode_preds(score_map, meta['center'], meta['scale'], [64, 64])

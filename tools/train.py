@@ -49,7 +49,8 @@ def main():
     cudnn.determinstic = config.CUDNN.DETERMINISTIC
     cudnn.enabled = config.CUDNN.ENABLED
 
-    model = models.get_face_alignment_net(config)
+    # model = models.get_face_alignment_net(config)
+    model = models.get_face_alignment_net(config).cuda()
 
     # copy model files
     writer_dict = {
@@ -59,10 +60,10 @@ def main():
     }
 
     gpus = list(config.GPUS)
-    model = nn.DataParallel(model, device_ids=gpus).cuda()
+    # model = nn.DataParallel(model, device_ids=gpus).cuda()
 
     # loss
-    criterion = torch.nn.MSELoss(size_average=True).cuda()
+    criterion = torch.nn.MSELoss(reduction="mean").cuda()
 
     optimizer = utils.get_optimizer(config, model)
     best_nme = 100
@@ -71,9 +72,11 @@ def main():
         model_state_file = os.path.join(final_output_dir,
                                         'latest.pth')
         if os.path.islink(model_state_file):
+            model_state_file = os.readlink(model_state_file)
             checkpoint = torch.load(model_state_file)
             last_epoch = checkpoint['epoch']
             best_nme = checkpoint['best_nme']
+            # model.module.load_state_dict(checkpoint['state_dict'])
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint (epoch {})"
@@ -110,6 +113,10 @@ def main():
         pin_memory=config.PIN_MEMORY
     )
 
+    # dataiter = iter(train_loader)
+    # inp, target, meta = dataiter.next()
+    # writer_dict['writer'].add_graph(model, inp.cuda())
+
     for epoch in range(last_epoch, config.TRAIN.END_EPOCH):
         lr_scheduler.step()
 
@@ -126,7 +133,7 @@ def main():
         logger.info('=> saving checkpoint to {}'.format(final_output_dir))
         print("best:", is_best)
         utils.save_checkpoint(
-            {"state_dict": model,
+            {"state_dict": model.state_dict(),
              "epoch": epoch + 1,
              "best_nme": best_nme,
              "optimizer": optimizer.state_dict(),
@@ -136,7 +143,7 @@ def main():
                                           'final_state.pth')
     logger.info('saving final model state to {}'.format(
         final_model_state_file))
-    torch.save(model.module.state_dict(), final_model_state_file)
+    torch.save(model.state_dict(), final_model_state_file)
     writer_dict['writer'].close()
 
 

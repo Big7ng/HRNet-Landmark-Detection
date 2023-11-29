@@ -52,11 +52,11 @@ def main():
 
     # load model
     state_dict = torch.load(args.model_file, map_location=device)
-    if 'state_dict' in state_dict.keys():
+    if 'state_dict' in state_dict.keys():  # 除了模型参数外还保存了其它信息
         state_dict = state_dict['state_dict']
         model.load_state_dict(state_dict)
     else:
-        model.load_state_dict(state_dict)
+        model.load_state_dict(state_dict)  # 只保存了模型参数
 
     dataset_type = get_dataset(config)
 
