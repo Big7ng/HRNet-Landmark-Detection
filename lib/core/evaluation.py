@@ -18,17 +18,17 @@ def get_preds(scores):
     return type: torch.LongTensor
     """
     assert scores.dim() == 4, 'Score maps should be 4-dim'
-    maxval, idx = torch.max(scores.view(scores.size(0), scores.size(1), -1), 2)
+    maxval, idx = torch.max(scores.view(scores.size(0), scores.size(1), -1), 2)  #每个通道的最大值与其索引
 
     maxval = maxval.view(scores.size(0), scores.size(1), 1)
     idx = idx.view(scores.size(0), scores.size(1), 1) + 1
 
     preds = idx.repeat(1, 1, 2).float()
 
-    preds[:, :, 0] = (preds[:, :, 0] - 1) % scores.size(3) + 1
-    preds[:, :, 1] = torch.floor((preds[:, :, 1] - 1) / scores.size(3)) + 1
+    preds[:, :, 0] = (preds[:, :, 0] - 1) % scores.size(3) + 1  #计算出预测的x坐标值
+    preds[:, :, 1] = torch.floor((preds[:, :, 1] - 1) / scores.size(3)) + 1  #计算出预测的y坐标值
 
-    pred_mask = maxval.gt(0).repeat(1, 1, 2).float()
+    pred_mask = maxval.gt(0).repeat(1, 1, 2).float()  #判断maxval的值是否大于0
     preds *= pred_mask
     return preds
 
@@ -68,8 +68,8 @@ def decode_preds(output, center, scale, res):
     # pose-processing
     for n in range(coords.size(0)):
         for p in range(coords.size(1)):
-            hm = output[n][p]
-            px = int(math.floor(coords[n][p][0]))
+            hm = output[n][p]  #第n个样本的第p个关键点的heatmap
+            px = int(math.floor(coords[n][p][0]))  #向下取整
             py = int(math.floor(coords[n][p][1]))
             if (px > 1) and (px < res[0]) and (py > 1) and (py < res[1]):
                 diff = torch.Tensor([hm[py - 1][px] - hm[py - 1][px - 2], hm[py][px - 1]-hm[py - 2][px - 1]])
@@ -82,6 +82,6 @@ def decode_preds(output, center, scale, res):
         preds[i] = transform_preds(coords[i], center[i], scale[i], res)
 
     if preds.dim() < 3:
-        preds = preds.view(1, preds.size())
+        preds = preds.view(1, preds.size())  #返回一个新的张量，该张量与原始张量共享数据，但具有指定的形状
 
     return preds

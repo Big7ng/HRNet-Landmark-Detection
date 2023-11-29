@@ -61,7 +61,6 @@ def train(config, train_loader, model, critertion, optimizer,
 
         inp = inp.cuda()
         # compute the output
-        inp = inp.to(device)
         output = model(inp)
         target = target.cuda(non_blocking=True)
 
@@ -128,9 +127,9 @@ def validate(config, val_loader, model, criterion, epoch, writer_dict):
         for i, (inp, target, meta) in enumerate(val_loader):
             data_time.update(time.time() - end)
 
-            inp = inp.to(device)
+            inp = inp.cuda()
             output = model(inp)
-            target = target.to(device, non_blocking=True)
+            target = target.cuda(non_blocking=True)
 
             score_map = output.data.cpu()
             # loss
