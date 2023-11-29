@@ -42,6 +42,8 @@ def main():
     logger, final_output_dir, tb_log_dir = \
         utils.create_logger(config, args.cfg, 'train')
 
+
+    print(final_output_dir)
     logger.info(pprint.pformat(args))
     logger.info(pprint.pformat(config))
 
@@ -49,20 +51,12 @@ def main():
     cudnn.determinstic = config.CUDNN.DETERMINISTIC
     cudnn.enabled = config.CUDNN.ENABLED
 
-    model = models.get_face_alignment_net(config)
-
-    # copy model files
-    writer_dict = {
-        'writer': SummaryWriter(log_dir=tb_log_dir),
-        'train_global_steps': 0,
-        'valid_global_steps': 0,
-    }
-
     gpus = list(config.GPUS)
-    model = nn.DataParallel(model, device_ids=gpus).cuda()
+    model = models.get_face_alignment_net(config).cuda()
+
 
     # loss
-    criterion = torch.nn.MSELoss(size_average=True).cuda()
+    criterion = torch.nn.MSELoss(reduction='mean').cuda()  # https://blog.csdn.net/weixin_54025765/article/details/123801498
 
     optimizer = utils.get_optimizer(config, model)
     best_nme = 100
@@ -71,15 +65,29 @@ def main():
         model_state_file = os.path.join(final_output_dir,
                                         'latest.pth')
         if os.path.islink(model_state_file):
-            checkpoint = torch.load(model_state_file)
+            model_state_file = os.readlink(model_state_file)
+            checkpoint = torch.load( model_state_file)
             last_epoch = checkpoint['epoch']
             best_nme = checkpoint['best_nme']
             model.load_state_dict(checkpoint['state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer'])
             print("=> loaded checkpoint (epoch {})"
                   .format(checkpoint['epoch']))
+            writer_dict = {
+                'writer': SummaryWriter(log_dir=checkpoint['tb_logdir']),
+                'train_global_steps': checkpoint['train_global_steps'],
+                'valid_global_steps': checkpoint['valid_global_steps']
+            }
         else:
             print("=> no checkpoint found")
+    else:
+        writer_dict = {
+            'writer': SummaryWriter(log_dir=tb_log_dir),
+            'train_global_steps': 0,
+            'valid_global_steps': 0,
+        }
+
+    
 
     if isinstance(config.TRAIN.LR_STEP, list):
         lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
@@ -110,11 +118,16 @@ def main():
         pin_memory=config.PIN_MEMORY
     )
 
+    dataiter = iter(train_loader)
+    inp, target, meta = dataiter.next()
+    writer_dict['writer'].add_graph(model, inp.cuda())
+
     for epoch in range(last_epoch, config.TRAIN.END_EPOCH):
-        lr_scheduler.step()
 
         function.train(config, train_loader, model, criterion,
                        optimizer, epoch, writer_dict)
+
+        lr_scheduler.step() # https://discuss.pytorch.org/t/userwarning-detected-call-of-lr-scheduler-step-before-optimizer-step-in-pytorch-1-1-0-and-later-you-should-call-them-in-the-opposite-order-optimizer-step-before-lr-scheduler-step/88295
 
         # evaluate
         nme, predictions = function.validate(config, val_loader, model,
@@ -126,17 +139,20 @@ def main():
         logger.info('=> saving checkpoint to {}'.format(final_output_dir))
         print("best:", is_best)
         utils.save_checkpoint(
-            {"state_dict": model,
+            {"state_dict": model.state_dict(),
              "epoch": epoch + 1,
              "best_nme": best_nme,
              "optimizer": optimizer.state_dict(),
+             "tb_logdir": tb_log_dir,
+             'train_global_steps': writer_dict['train_global_steps'],
+             'valid_global_steps': writer_dict['valid_global_steps']
              }, predictions, is_best, final_output_dir, 'checkpoint_{}.pth'.format(epoch))
 
     final_model_state_file = os.path.join(final_output_dir,
                                           'final_state.pth')
     logger.info('saving final model state to {}'.format(
         final_model_state_file))
-    torch.save(model.module.state_dict(), final_model_state_file)
+    torch.save(model.state_dict(), final_model_state_file)
     writer_dict['writer'].close()
 
 
